@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGRI-NOSE | ESP32 Crop Disease Detection System</title>
+<meta name="description" content="Real-time crop disease detection using ESP32, DHT11, and MQ7 sensors with Machine Learning VOC analysis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg0:#02040a;--bg1:#060d1a;--bg2:#0a1525;--bg3:#0f1e35;--bg4:#142240;
+  --card:rgba(15,30,55,0.75);--card2:rgba(20,38,68,0.6);
+  --border:rgba(100,160,255,0.1);--border2:rgba(100,160,255,0.2);
+  --g:#00ffaa;--g2:#00cc88;--r:#ff3b6b;--b:#4da8ff;--y:#ffd060;--p:#bf7fff;--o:#ff8c42;
+  --t1:#e8f0ff;--t2:#8aa4c8;--t3:#3d5a7a;
+  --sidebar:275px;--header:65px;
+  --rsm:8px;--rmd:14px;--rlg:20px;--rxl:26px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;font-size:15px}
+body{font-family:'Inter',sans-serif;background:var(--bg0);color:var(--t1);overflow-x:hidden;min-height:100vh}
+a{text-decoration:none;color:inherit}
+button{font-family:'Inter',sans-serif;cursor:pointer}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ── AMBIENT ── */
+.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(110px);opacity:0.45}
+.o1{width:700px;height:700px;background:radial-gradient(circle,rgba(0,255,170,0.13),transparent 65%);top:-200px;left:-200px;animation:orb1 18s ease-in-out infinite alternate}
+.o2{width:600px;height:600px;background:radial-gradient(circle,rgba(77,168,255,0.11),transparent 65%);bottom:-200px;right:-200px;animation:orb2 22s ease-in-out infinite alternate}
+.o3{width:350px;height:350px;background:radial-gradient(circle,rgba(255,140,66,0.08),transparent 65%);top:35%;left:55%;animation:orb1 28s ease-in-out infinite alternate-reverse}
+@keyframes orb1{to{transform:translate(80px,100px)}}
+@keyframes orb2{to{transform:translate(-80px,-100px)}}
+.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(100,160,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(100,160,255,0.025) 1px,transparent 1px);
+  background-size:50px 50px}
+
+/* ── LAYOUT ── */
+.layout{display:flex;min-height:100vh;position:relative;z-index:1}
+
+/* ════════════════════════════════════════
+   SIDEBAR
+════════════════════════════════════════ */
+.sidebar{
+  width:var(--sidebar);flex-shrink:0;
+  background:linear-gradient(180deg,rgba(6,13,26,0.98)0%,rgba(2,4,10,0.98)100%);
+  border-right:1px solid var(--border);
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+  display:flex;flex-direction:column;backdrop-filter:blur(20px);
+}
+.sidebar::-webkit-scrollbar{display:none}
+
+.sb-brand{padding:1.4rem 1.2rem 1rem;border-bottom:1px solid var(--border)}
+.sb-logo-row{display:flex;align-items:center;gap:.8rem;margin-bottom:.3rem}
+.sb-logo-box{
+  width:46px;height:46px;border-radius:13px;
+  background:linear-gradient(135deg,rgba(0,255,170,0.18),rgba(77,168,255,0.08));
+  border:1px solid rgba(0,255,170,0.28);
+  display:flex;align-items:center;justify-content:center;font-size:1.4rem;
+  box-shadow:0 0 24px rgba(0,255,170,0.12);position:relative;overflow:hidden;
+}
+.sb-logo-box::after{content:'';position:absolute;inset:-50%;
+  background:conic-gradient(transparent 0deg,rgba(0,255,170,0.15) 180deg,transparent 360deg);
+  animation:spin 4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sb-logo-inner{position:relative;z-index:1}
+.sb-brand-name{font-family:'Space Grotesk',sans-serif;font-size:1.25rem;font-weight:800;letter-spacing:1.5px;
+  background:linear-gradient(90deg,var(--g),var(--b));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sb-brand-ver{font-size:.67rem;color:var(--t3);letter-spacing:.5px}
+
+/* Hardware info chip */
+.hw-chip{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.6rem}
+.chip{display:inline-flex;align-items:center;gap:.3rem;padding:.18rem .6rem;border-radius:20px;font-size:.67rem;font-weight:600;letter-spacing:.3px}
+.chip-esp{background:rgba(77,168,255,0.12);color:var(--b);border:1px solid rgba(77,168,255,0.25)}
+.chip-dht{background:rgba(255,208,96,0.12);color:var(--y);border:1px solid rgba(255,208,96,0.25)}
+.chip-mq7{background:rgba(255,140,66,0.12);color:var(--o);border:1px solid rgba(255,140,66,0.25)}
+
+.sb-uptime{margin:.7rem 1.1rem;background:rgba(0,255,170,0.04);border:1px solid rgba(0,255,170,0.12);
+  border-radius:var(--rmd);padding:.65rem;text-align:center}
+.sb-uptime-lbl{display:block;font-size:.59rem;letter-spacing:2.5px;color:var(--t3);text-transform:uppercase;margin-bottom:.2rem}
+.sb-uptime-val{font-family:'JetBrains Mono',monospace;font-size:1.45rem;font-weight:700;color:var(--g);
+  text-shadow:0 0 15px rgba(0,255,170,0.5);letter-spacing:2px}
+
+.sb-nav{padding:.4rem .8rem;flex:1}
+.nav-section-label{font-size:.59rem;letter-spacing:2.5px;text-transform:uppercase;color:var(--t3);padding:.5rem .4rem .25rem;margin-top:.3rem}
+.nav-item{display:flex;align-items:center;gap:.7rem;padding:.62rem .8rem;border-radius:var(--rsm);
+  color:var(--t2);font-size:.83rem;font-weight:500;transition:all .2s;margin-bottom:.1rem;
+  position:relative;cursor:pointer;border:none;background:transparent;width:100%;text-align:left}
+.nav-item:hover{background:rgba(255,255,255,0.04);color:var(--t1)}
+.nav-item.active{background:rgba(0,255,170,0.08);color:var(--g);border:1px solid rgba(0,255,170,0.15)}
+.nav-item.active::before{content:'';position:absolute;left:0;top:22%;bottom:22%;width:3px;border-radius:2px;background:var(--g);box-shadow:0 0 8px var(--g)}
+.nav-icon{font-size:1rem;flex-shrink:0;width:20px;text-align:center}
+
+.sb-hw{margin:.7rem .9rem;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--rmd);padding:.9rem}
+.sb-hw-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:.55rem}
+.sb-hw-title{font-size:.59rem;letter-spacing:2px;text-transform:uppercase;color:var(--t3)}
+.hw-dot{width:10px;height:10px;border-radius:50%}
+.hw-dot.off{background:var(--r);box-shadow:0 0 8px var(--r)}
+.hw-dot.on{background:var(--g);box-shadow:0 0 8px var(--g);animation:blink 1.5s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.hw-badge{display:inline-block;font-size:.67rem;font-weight:700;letter-spacing:.5px;padding:.18rem .6rem;border-radius:20px;margin-bottom:.45rem}
+.hw-badge.sim{background:rgba(255,208,96,0.12);color:var(--y);border:1px solid rgba(255,208,96,0.3)}
+.hw-badge.live{background:rgba(0,255,170,0.12);color:var(--g);border:1px solid rgba(0,255,170,0.3)}
+.hw-badge.wifi{background:rgba(77,168,255,0.12);color:var(--b);border:1px solid rgba(77,168,255,0.3)}
+.hw-desc{font-size:.75rem;color:var(--t2);line-height:1.5;margin-bottom:.7rem}
+.hw-btns{display:flex;flex-direction:column;gap:.38rem}
+.hw-btn{padding:.58rem .8rem;border-radius:var(--rsm);font-size:.76rem;font-weight:600;transition:all .2s;
+  display:flex;align-items:center;justify-content:center;gap:.4rem;border:1px solid transparent}
+.btn-usb{background:transparent;border-color:rgba(0,255,170,0.25);color:var(--g)}
+.btn-usb:hover{background:rgba(0,255,170,0.08);box-shadow:0 0 15px rgba(0,255,170,0.12)}
+.btn-wifi{background:transparent;border-color:rgba(77,168,255,0.25);color:var(--b)}
+.btn-wifi:hover{background:rgba(77,168,255,0.08)}
+.btn-sim{background:transparent;border-color:var(--border);color:var(--t2)}
+.btn-sim.on{background:rgba(255,208,96,0.08);border-color:rgba(255,208,96,0.25);color:var(--y)}
+
+.sb-sim{margin:.45rem .9rem .7rem;display:flex;flex-direction:column;gap:.38rem}
+.sb-sim-lbl{font-size:.59rem;letter-spacing:2px;text-transform:uppercase;color:var(--t3)}
+.styled-sel{background:rgba(0,0,0,0.5);color:var(--t1);border:1px solid var(--border2);
+  border-radius:var(--rsm);padding:.52rem .8rem;font-family:'Inter',sans-serif;font-size:.81rem;
+  outline:none;cursor:pointer;width:100%;transition:border-color .2s}
+.styled-sel:focus{border-color:rgba(0,255,170,0.4)}
+
+.sb-footer{padding:.75rem 1.1rem;border-top:1px solid var(--border);text-align:center}
+.sb-footer p{font-size:.68rem;color:var(--t3);line-height:1.6}
+.sb-footer a{color:var(--b);font-weight:600}
+
+/* ════════════════════════════════════════
+   MAIN
+════════════════════════════════════════ */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+.topbar{
+  height:var(--header);background:rgba(6,13,26,0.96);
+  border-bottom:1px solid var(--border);backdrop-filter:blur(20px);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2rem;position:sticky;top:0;z-index:50;
+}
+.breadcrumb{font-size:.7rem;color:var(--t3);margin-bottom:.1rem}
+.breadcrumb span{color:var(--t2)}
+.page-title{font-family:'Space Grotesk',sans-serif;font-size:1.2rem;font-weight:700}
+.topbar-right{display:flex;align-items:center;gap:1rem}
+.top-clock{font-family:'JetBrains Mono',monospace;font-size:1rem;color:var(--t2);letter-spacing:1px}
+.pulse-row{display:flex;align-items:center;gap:.4rem;font-size:.66rem;letter-spacing:1.5px;color:var(--t3);text-transform:uppercase}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g);animation:blink 1s ease-in-out infinite}
+.gh-btn{padding:.38rem .95rem;background:rgba(255,255,255,0.04);border:1px solid var(--border2);border-radius:20px;font-size:.76rem;font-weight:600;color:var(--t2);transition:all .2s}
+.gh-btn:hover{border-color:var(--g);color:var(--g)}
+
+.page-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 2rem;
+  background:rgba(6,13,26,0.7);backdrop-filter:blur(10px);position:sticky;top:var(--header);z-index:40}
+.tab-btn{padding:.68rem 1.3rem;font-size:.8rem;font-weight:600;color:var(--t3);border:none;background:transparent;cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .2s;letter-spacing:.3px}
+.tab-btn:hover{color:var(--t2)}
+.tab-btn.active{color:var(--g);border-bottom-color:var(--g)}
+
+.content{padding:1.7rem 2rem 4rem;display:flex;flex-direction:column;gap:1.4rem}
+.page{display:none}.page.active{display:flex;flex-direction:column;gap:1.4rem}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.page.active>*{animation:fadeUp .35s ease both}
+.page.active>*:nth-child(2){animation-delay:.05s}
+.page.active>*:nth-child(3){animation-delay:.1s}
+.page.active>*:nth-child(4){animation-delay:.15s}
+
+/* ════════════════════════════════════════
+   SHARED CARD
+════════════════════════════════════════ */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--rlg);backdrop-filter:blur(12px);position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(100,160,255,0.18),transparent)}
+.cp{padding:1.4rem 1.6rem}
+.ch{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.9rem;flex-wrap:wrap;gap:.7rem}
+.ct{font-family:'Space Grotesk',sans-serif;font-size:.98rem;font-weight:700;margin-bottom:.13rem}
+.cs{font-size:.74rem;color:var(--t3)}
+.cw{position:relative;width:100%}
+
+/* ════════════════════════════════════════
+   INFERENCE HERO
+════════════════════════════════════════ */
+.inf-hero{
+  background:linear-gradient(135deg,rgba(10,24,48,0.92),rgba(5,12,24,0.82));
+  border:1px solid var(--border2);border-radius:var(--rxl);
+  padding:1.8rem 2.2rem;display:flex;align-items:center;gap:2.2rem;flex-wrap:wrap;
+  position:relative;overflow:hidden;
+}
+.inf-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent 0%,var(--g) 35%,var(--b) 65%,transparent 100%)}
+.inf-hero::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 15% 50%,rgba(0,255,170,0.04),transparent 60%)}
+.inf-main{flex:1;min-width:180px}
+.inf-lbl{font-size:.61rem;letter-spacing:3px;color:var(--t3);text-transform:uppercase;margin-bottom:.4rem}
+.inf-result{font-family:'Space Grotesk',sans-serif;font-size:2.6rem;font-weight:800;transition:all .5s;line-height:1.1;margin-bottom:.3rem}
+.inf-result.healthy{color:var(--g);text-shadow:0 0 40px rgba(0,255,170,0.3)}
+.inf-result.blight{color:var(--r);text-shadow:0 0 40px rgba(255,59,107,0.3)}
+.inf-result.fungal{color:var(--b);text-shadow:0 0 40px rgba(77,168,255,0.3)}
+.inf-result.pest{color:var(--y);text-shadow:0 0 40px rgba(255,208,96,0.3)}
+.inf-sub{font-size:.78rem;color:var(--t3)}
+
+.ring-wrap{text-align:center}
+.ring-lbl{font-size:.59rem;letter-spacing:2px;color:var(--t3);text-transform:uppercase;margin-bottom:.45rem;display:block}
+.ring-box{position:relative;width:112px;height:112px;margin:0 auto}
+.ring-svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring-bg-c{fill:none;stroke:rgba(255,255,255,0.05);stroke-width:9}
+.ring-fill-c{fill:none;stroke-width:9;stroke-linecap:round;stroke-dasharray:327;stroke-dashoffset:0;
+  filter:drop-shadow(0 0 6px rgba(0,255,170,0.5));transition:stroke-dashoffset .6s ease,stroke .4s}
+.ring-val{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:'JetBrains Mono',monospace;font-size:1.15rem;font-weight:700}
+
+.inf-status-col{flex:1;min-width:180px}
+.status-rows{display:flex;flex-direction:column;gap:0}
+.status-row{display:flex;justify-content:space-between;align-items:center;padding:.5rem .1rem;border-bottom:1px solid var(--border);font-size:.8rem}
+.status-row:last-child{border-bottom:none}
+.status-row span{color:var(--t3)}
+.status-row strong{font-weight:600}
+
+.inf-stats{display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:1.1rem;margin-top:1.1rem;width:100%}
+.istat{text-align:center}
+.istat-v{display:block;font-family:'JetBrains Mono',monospace;font-size:1.25rem;font-weight:700}
+.istat-l{font-size:.63rem;color:var(--t3);text-transform:uppercase;letter-spacing:1px}
+.istat-div{width:1px;height:34px;background:var(--border)}
+
+/* ════════════════════════════════════════
+   SENSOR CARDS — 4 cols for ESP32+DHT11+MQ7+derived
+════════════════════════════════════════ */
+.sensor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.sensor-card{border-radius:var(--rlg);padding:1.2rem;display:flex;flex-direction:column;gap:.55rem;
+  background:var(--card);border:1px solid var(--border);transition:all .3s;position:relative;overflow:hidden}
+.sensor-card:hover{transform:translateY(-4px);box-shadow:0 14px 42px rgba(0,0,0,0.45)}
+.sensor-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;opacity:.7}
+.sc-co::after{background:linear-gradient(90deg,transparent,var(--o),transparent)}   /* MQ7 CO */
+.sc-temp::after{background:linear-gradient(90deg,transparent,var(--r),transparent)}  /* DHT11 Temp */
+.sc-hum::after{background:linear-gradient(90deg,transparent,var(--b),transparent)}   /* DHT11 Humidity */
+.sc-aqi::after{background:linear-gradient(90deg,transparent,var(--p),transparent)}   /* Derived AQI */
+
+.sc-head{display:flex;align-items:center;gap:.55rem}
+.sc-led{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.led-o{background:var(--o);box-shadow:0 0 8px var(--o)}
+.led-r{background:var(--r);box-shadow:0 0 8px var(--r)}
+.led-b{background:var(--b);box-shadow:0 0 8px var(--b)}
+.led-p{background:var(--p);box-shadow:0 0 8px var(--p)}
+.sc-id{font-family:'JetBrains Mono',monospace;font-size:.82rem;font-weight:700;flex:1}
+.sc-gas{font-size:.63rem;color:var(--t3)}
+.sc-trend{font-size:.72rem;padding:.08rem .38rem;border-radius:4px;font-weight:700}
+.trend-up{color:var(--r);background:rgba(255,59,107,0.1)}
+.trend-dn{color:var(--g);background:rgba(0,255,170,0.1)}
+.trend-fl{color:var(--t3);background:rgba(255,255,255,0.05)}
+.sc-val{font-family:'JetBrains Mono',monospace;font-size:2.1rem;font-weight:700;line-height:1;color:var(--t1)}
+.sc-unit{font-size:.66rem;color:var(--t3)}
+.sc-bar-wrap{height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden}
+.sc-bar{height:100%;border-radius:2px;width:10%;transition:width .4s ease}
+.bar-o{background:linear-gradient(90deg,#cc5500,var(--o))}
+.bar-r{background:linear-gradient(90deg,#cc1144,var(--r))}
+.bar-b{background:linear-gradient(90deg,#1166cc,var(--b))}
+.bar-p{background:linear-gradient(90deg,#8844cc,var(--p))}
+.sc-footer{display:flex;justify-content:space-between;font-size:.66rem;color:var(--t3)}
+.sc-footer b{color:var(--t2)}
+
+/* ════════════════════════════════════════
+   CHARTS
+════════════════════════════════════════ */
+.charts-row{display:grid;grid-template-columns:2fr 1fr;gap:1.2rem}
+.mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.mini-card{border-radius:var(--rmd);padding:1rem 1.1rem;background:var(--card);border:1px solid var(--border);overflow:hidden}
+.mini-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:.55rem}
+.mini-name{font-family:'JetBrains Mono',monospace;font-size:.82rem;font-weight:700}
+.mini-sub{font-size:.63rem;color:var(--t3)}
+.analytics-row{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+.legend-row{display:flex;gap:.75rem;flex-wrap:wrap}
+.leg{display:flex;align-items:center;gap:.32rem;font-size:.7rem;color:var(--t2)}
+.leg-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+/* event log */
+.log-list{display:flex;flex-direction:column;gap:.28rem;max-height:290px;overflow-y:auto;padding-right:.3rem}
+.log-entry{display:flex;gap:.65rem;padding:.42rem .6rem;border-radius:6px;font-size:.75rem;border-left:2px solid transparent;animation:logIn .3s ease}
+@keyframes logIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.log-info{background:rgba(255,255,255,0.02);border-color:var(--t3)}
+.log-healthy{background:rgba(0,255,170,0.04);border-color:var(--g)}
+.log-blight{background:rgba(255,59,107,0.04);border-color:var(--r)}
+.log-fungal{background:rgba(77,168,255,0.04);border-color:var(--b)}
+.log-pest{background:rgba(255,208,96,0.04);border-color:var(--y)}
+.log-t{font-family:'JetBrains Mono',monospace;font-size:.66rem;color:var(--t3);white-space:nowrap;margin-top:1px}
+.log-m{color:var(--t2);flex:1;line-height:1.4}
+.log-m strong{color:var(--t1)}
+.clear-btn{font-size:.7rem;padding:.22rem .62rem;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--t3);cursor:pointer;transition:all .2s}
+.clear-btn:hover{border-color:var(--r);color:var(--r)}
+
+/* ════════════════════════════════════════
+   PROJECT PAGE
+════════════════════════════════════════ */
+.project-hero{
+  background:linear-gradient(135deg,rgba(10,22,45,0.92),rgba(5,12,24,0.82));
+  border:1px solid var(--border2);border-radius:var(--rxl);padding:2.4rem 2.5rem 2rem;
+  position:relative;overflow:hidden;
+}
+.project-hero::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--g),var(--b),var(--o))}
+.ph-lbl{font-size:.61rem;letter-spacing:3px;text-transform:uppercase;color:var(--t3);margin-bottom:.55rem}
+.ph-title{font-family:'Space Grotesk',sans-serif;font-size:2.1rem;font-weight:800;margin-bottom:.75rem;
+  background:linear-gradient(90deg,var(--t1),var(--b));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1.25}
+.ph-desc{font-size:.9rem;color:var(--t2);line-height:1.8;max-width:700px;margin-bottom:1.4rem}
+.ph-hw-row{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
+.hw-pill{display:inline-flex;align-items:center;gap:.4rem;padding:.35rem .9rem;border-radius:var(--rsm);font-size:.78rem;font-weight:600}
+.hw-pill-esp{background:rgba(77,168,255,0.1);color:var(--b);border:1px solid rgba(77,168,255,0.25)}
+.hw-pill-dht{background:rgba(255,208,96,0.1);color:var(--y);border:1px solid rgba(255,208,96,0.25)}
+.hw-pill-mq7{background:rgba(255,140,66,0.1);color:var(--o);border:1px solid rgba(255,140,66,0.25)}
+.ph-tags{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1.4rem}
+.tag{padding:.25rem .7rem;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:20px;font-size:.7rem;color:var(--t2)}
+.ph-btns{display:flex;gap:.75rem;flex-wrap:wrap}
+.ph-btn{padding:.58rem 1.35rem;border-radius:var(--rsm);font-size:.8rem;font-weight:700;transition:all .2s;border:1px solid transparent;display:flex;align-items:center;gap:.5rem}
+.ph-btn-primary{background:linear-gradient(90deg,var(--g2),var(--g));color:#000}
+.ph-btn-primary:hover{box-shadow:0 0 20px rgba(0,255,170,0.35);transform:translateY(-2px)}
+.ph-btn-outline{background:transparent;border-color:var(--border2);color:var(--t2)}
+.ph-btn-outline:hover{border-color:var(--g);color:var(--g)}
+
+.compare-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.compare-table th{font-size:.62rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);padding:.55rem .75rem;text-align:left;border-bottom:1px solid var(--border)}
+.compare-table td{padding:.65rem .75rem;border-bottom:1px solid rgba(100,160,255,0.05);color:var(--t2);vertical-align:top}
+.compare-table tr:hover td{background:rgba(255,255,255,0.015)}
+.compare-table td:first-child{color:var(--t1);font-weight:600}
+td.good{color:var(--g)} td.bad{color:var(--r)}
+
+.spec-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.spec-row{display:flex;justify-content:space-between;align-items:center;padding:.6rem .15rem;border-bottom:1px solid rgba(100,160,255,0.06);font-size:.82rem}
+.spec-row:last-child{border-bottom:none}
+.spec-row span{color:var(--t3)}
+.spec-row strong{color:var(--t1);font-weight:600;text-align:right}
+
+.metrics-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.metric-box{background:var(--card);border:1px solid var(--border);border-radius:var(--rlg);padding:1.3rem;text-align:center;transition:all .3s;position:relative;overflow:hidden}
+.metric-box:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,0.4)}
+.metric-box::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px}
+.mb-g::after{background:linear-gradient(90deg,transparent,var(--g),transparent)}
+.mb-b::after{background:linear-gradient(90deg,transparent,var(--b),transparent)}
+.mb-o::after{background:linear-gradient(90deg,transparent,var(--o),transparent)}
+.mb-y::after{background:linear-gradient(90deg,transparent,var(--y),transparent)}
+.mb-icon{font-size:1.8rem;margin-bottom:.55rem;display:block}
+.mb-val{font-family:'JetBrains Mono',monospace;font-size:1.75rem;font-weight:800;line-height:1;margin-bottom:.28rem}
+.mb-lbl{font-size:.68rem;color:var(--t3);text-transform:uppercase;letter-spacing:1px}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.2rem}
+
+.timeline{display:flex;flex-direction:column}
+.tl-item{display:flex;gap:1.1rem;padding:.9rem 0;border-bottom:1px solid rgba(100,160,255,0.06)}
+.tl-item:last-child{border-bottom:none}
+.tl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:.3rem}
+.tl-title{font-weight:700;font-size:.87rem;margin-bottom:.22rem}
+.tl-desc{font-size:.78rem;color:var(--t2);line-height:1.6}
+
+/* ════════════════════════════════════════
+   HARDWARE PAGE
+════════════════════════════════════════ */
+.code-block{background:rgba(0,0,0,0.65);border:1px solid var(--border);border-radius:var(--rmd);padding:1.1rem 1.3rem;overflow-x:auto}
+.code-block pre{font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a8c8ff;line-height:1.75;white-space:pre}
+.code-kw{color:#ff9de2}.code-str{color:#c3e88d}.code-fn{color:#82aaff}.code-cm{color:#546e7a}.code-num{color:#f78c6c}
+.wire-row{background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--rsm);padding:.78rem 1rem;display:flex;justify-content:space-between;align-items:center;font-size:.82rem;margin-bottom:.5rem}
+.wire-name{font-weight:700}
+.wire-pins{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--t2);text-align:right}
+
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div class="ambient"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+<div class="grid-bg"></div>
+
+<div class="layout">
+
+<!-- ════════ SIDEBAR ════════ -->
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo-row">
+      <div class="sb-logo-box"><span class="sb-logo-inner">🌱</span></div>
+      <div>
+        <div class="sb-brand-name">AGRI-NOSE</div>
+        <div class="sb-brand-ver">Crop Disease Detection System</div>
+      </div>
+    </div>
+    <div class="hw-chip">
+      <span class="chip chip-esp">⚡ ESP32</span>
+      <span class="chip chip-dht">🌡 DHT11</span>
+      <span class="chip chip-mq7">💨 MQ7</span>
+    </div>
+  </div>
+
+  <div class="sb-uptime">
+    <span class="sb-uptime-lbl">System Uptime</span>
+    <span id="uptime" class="sb-uptime-val">00:00:00</span>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="nav-section-label">Navigation</div>
+    <button class="nav-item active" onclick="showPage('dashboard',this,'tab-dashboard')">
+      <span class="nav-icon">⚡</span> Live Dashboard
+    </button>
+    <button class="nav-item" onclick="showPage('analytics',this,'tab-analytics')">
+      <span class="nav-icon">📊</span> Analytics
+    </button>
+    <button class="nav-item" onclick="showPage('project',this,'tab-project')">
+      <span class="nav-icon">🧬</span> Project Details
+    </button>
+    <button class="nav-item" onclick="showPage('hardware',this,'tab-hardware')">
+      <span class="nav-icon">🔧</span> Hardware Setup
+    </button>
+    <div class="nav-section-label">Links</div>
+    <a href="https://github.com/veeraragavendhiran/Enose_realtime_project" target="_blank" class="nav-item">
+      <span class="nav-icon">🔗</span> GitHub Repo
+    </a>
+  </nav>
+
+  <div class="sb-hw">
+    <div class="sb-hw-hdr">
+      <span class="sb-hw-title">ESP32 Connection</span>
+      <span id="hw-dot" class="hw-dot off"></span>
+    </div>
+    <span id="hw-badge" class="hw-badge sim">● SIM MODE</span>
+    <p id="hw-desc" class="hw-desc">No ESP32 detected.<br>Simulation running.</p>
+    <div class="hw-btns">
+      <button class="hw-btn btn-usb" onclick="connectUSB()">🔌 Connect via USB Serial</button>
+      <button class="hw-btn btn-wifi" onclick="connectWifi()">📡 Connect via WiFi/IP</button>
+      <button id="btn-sim" class="hw-btn btn-sim on" onclick="startSim()">🔬 Simulation Mode</button>
+    </div>
+  </div>
+
+  <div class="sb-sim" id="sim-panel">
+    <label class="sb-sim-lbl">Simulate Crop State</label>
+    <select id="state-sel" class="styled-sel" onchange="currentState=this.value">
+      <option value="Healthy">🌿 Healthy Plant</option>
+      <option value="Bacterial Blight">🦠 Bacterial Blight</option>
+      <option value="Fungal Infection">🍄 Fungal Infection</option>
+      <option value="Pest Attack">🐛 Pest Attack</option>
+    </select>
+  </div>
+
+  <div class="sb-footer">
+    <p>Built by <a href="https://github.com/veeraragavendhiran" target="_blank">Veeraragavendhiran</a></p>
+    <p>ESP32 · DHT11 · MQ7 · Machine Learning</p>
+  </div>
+</aside>
+
+<!-- ════════ MAIN ════════ -->
+<main class="main">
+
+  <header class="topbar">
+    <div>
+      <div class="breadcrumb">AGRI-NOSE <span>› ESP32 + DHT11 + MQ7 System</span></div>
+      <div class="page-title">Crop Disease Detection Dashboard</div>
+    </div>
+    <div class="topbar-right">
+      <div id="clock" class="top-clock">--:--:--</div>
+      <div class="pulse-row"><div class="pulse"></div><span>Live Stream</span></div>
+      <a href="https://github.com/veeraragavendhiran/Enose_realtime_project" target="_blank" class="gh-btn">GitHub →</a>
+    </div>
+  </header>
+
+  <div class="page-tabs">
+    <button id="tab-dashboard" class="tab-btn active" onclick="showPage('dashboard',null,'tab-dashboard')">⚡ Dashboard</button>
+    <button id="tab-analytics" class="tab-btn" onclick="showPage('analytics',null,'tab-analytics')">📊 Analytics</button>
+    <button id="tab-project"   class="tab-btn" onclick="showPage('project',null,'tab-project')">🧬 Project Details</button>
+    <button id="tab-hardware"  class="tab-btn" onclick="showPage('hardware',null,'tab-hardware')">🔧 Hardware Setup</button>
+  </div>
+
+  <div class="content">
+
+    <!-- ══════ PAGE: DASHBOARD ══════ -->
+    <div id="page-dashboard" class="page active">
+
+      <!-- ML Inference Hero -->
+      <div class="inf-hero">
+        <div class="inf-main">
+          <div class="inf-lbl">Current ML Classification</div>
+          <div id="ml-result" class="inf-result healthy">Healthy</div>
+          <div class="inf-sub">ESP32 · DHT11 Temperature &amp; Humidity · MQ7 Carbon Monoxide · VOC Analysis</div>
+        </div>
+        <div class="ring-wrap">
+          <span class="ring-lbl">Confidence</span>
+          <div class="ring-box">
+            <svg viewBox="0 0 120 120" class="ring-svg">
+              <circle cx="60" cy="60" r="52" class="ring-bg-c"/>
+              <circle id="ring-c" cx="60" cy="60" r="52" class="ring-fill-c"/>
+            </svg>
+            <span id="conf-val" class="ring-val">99%</span>
+          </div>
+        </div>
+        <div class="inf-status-col">
+          <div class="inf-lbl" style="margin-bottom:.7rem">System Status</div>
+          <div class="status-rows">
+            <div class="status-row"><span>MCU</span><strong style="color:var(--b)">ESP32</strong></div>
+            <div class="status-row"><span>Mode</span><strong id="mode-lbl">Simulation</strong></div>
+            <div class="status-row"><span>Samples</span><strong id="sample-cnt">0</strong></div>
+            <div class="status-row"><span>Alert</span><strong id="alert-lbl" style="color:var(--g)">NORMAL</strong></div>
+            <div class="status-row"><span>Rate</span><strong>1 Hz display</strong></div>
+          </div>
+        </div>
+        <div class="inf-stats">
+          <div class="istat"><span class="istat-v" style="color:var(--g)">95.6%</span><span class="istat-l">Accuracy</span></div>
+          <div class="istat-div"></div>
+          <div class="istat"><span class="istat-v" style="color:var(--b)">&lt;15ms</span><span class="istat-l">Latency</span></div>
+          <div class="istat-div"></div>
+          <div class="istat"><span class="istat-v" style="color:var(--o)">MQ7</span><span class="istat-l">CO Sensor</span></div>
+          <div class="istat-div"></div>
+          <div class="istat"><span class="istat-v" style="color:var(--y)">DHT11</span><span class="istat-l">Temp+Hum</span></div>
+          <div class="istat-div"></div>
+          <div class="istat"><span id="istat-s" class="istat-v">0</span><span class="istat-l">Samples</span></div>
+        </div>
+      </div>
+
+      <!-- Sensor Cards: MQ7 CO | DHT11 Temp | DHT11 Humidity | Derived Heat Index -->
+      <div class="sensor-grid">
+        <div class="sensor-card sc-co">
+          <div class="sc-head">
+            <div class="sc-led led-o"></div>
+            <span class="sc-id">MQ7</span>
+            <span id="trend-co" class="sc-trend trend-fl">→</span>
+            <span class="sc-gas">Carbon Monoxide</span>
+          </div>
+          <div id="v-co" class="sc-val">---</div>
+          <div class="sc-unit">ppm (CO concentration)</div>
+          <div class="sc-bar-wrap"><div id="b-co" class="sc-bar bar-o" style="width:5%"></div></div>
+          <div class="sc-footer">
+            <span>MIN: <b id="mn-co">--</b></span>
+            <span>MAX: <b id="mx-co">--</b></span>
+          </div>
+        </div>
+        <div class="sensor-card sc-temp">
+          <div class="sc-head">
+            <div class="sc-led led-r"></div>
+            <span class="sc-id">DHT11</span>
+            <span id="trend-temp" class="sc-trend trend-fl">→</span>
+            <span class="sc-gas">Temperature</span>
+          </div>
+          <div id="v-temp" class="sc-val">--.-</div>
+          <div class="sc-unit">°C (Celsius)</div>
+          <div class="sc-bar-wrap"><div id="b-temp" class="sc-bar bar-r" style="width:50%"></div></div>
+          <div class="sc-footer">
+            <span>MIN: <b id="mn-temp">--</b></span>
+            <span>MAX: <b id="mx-temp">--</b></span>
+          </div>
+        </div>
+        <div class="sensor-card sc-hum">
+          <div class="sc-head">
+            <div class="sc-led led-b"></div>
+            <span class="sc-id">DHT11</span>
+            <span id="trend-hum" class="sc-trend trend-fl">→</span>
+            <span class="sc-gas">Humidity</span>
+          </div>
+          <div id="v-hum" class="sc-val">--</div>
+          <div class="sc-unit">%RH (Relative Humidity)</div>
+          <div class="sc-bar-wrap"><div id="b-hum" class="sc-bar bar-b" style="width:60%"></div></div>
+          <div class="sc-footer">
+            <span>MIN: <b id="mn-hum">--</b></span>
+            <span>MAX: <b id="mx-hum">--</b></span>
+          </div>
+        </div>
+        <div class="sensor-card sc-aqi">
+          <div class="sc-head">
+            <div class="sc-led led-p"></div>
+            <span class="sc-id">DERIVED</span>
+            <span id="trend-hi" class="sc-trend trend-fl">→</span>
+            <span class="sc-gas">Heat Index</span>
+          </div>
+          <div id="v-hi" class="sc-val">--.-</div>
+          <div class="sc-unit">°C (Feels like)</div>
+          <div class="sc-bar-wrap"><div id="b-hi" class="sc-bar bar-p" style="width:50%"></div></div>
+          <div class="sc-footer">
+            <span>MIN: <b id="mn-hi">--</b></span>
+            <span>MAX: <b id="mx-hi">--</b></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Combined chart + Event log -->
+      <div class="charts-row">
+        <div class="card cp">
+          <div class="ch">
+            <div><div class="ct">Multi-Sensor Live Stream</div><div class="cs">ESP32 data — CO (ppm), Temperature (°C), Humidity (%)</div></div>
+            <div class="legend-row">
+              <span class="leg"><i class="leg-dot" style="background:#ff8c42"></i>CO (ppm)</span>
+              <span class="leg"><i class="leg-dot" style="background:#ff3b6b"></i>Temp (°C)</span>
+              <span class="leg"><i class="leg-dot" style="background:#4da8ff"></i>Hum (%)</span>
+              <span class="leg"><i class="leg-dot" style="background:#bf7fff"></i>Heat Idx</span>
+            </div>
+          </div>
+          <div class="cw" style="height:230px"><canvas id="chart-main"></canvas></div>
+        </div>
+        <div class="card cp">
+          <div class="ch">
+            <div><div class="ct">Event Log</div><div class="cs">Classification history</div></div>
+            <button class="clear-btn" onclick="clearLog()">Clear</button>
+          </div>
+          <div id="event-log" class="log-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ PAGE: ANALYTICS ══════ -->
+    <div id="page-analytics" class="page">
+      <div class="mini-grid">
+        <div class="mini-card">
+          <div class="mini-hd"><span class="mini-name" style="color:#ff8c42">MQ7</span><span class="mini-sub">CO (ppm)</span></div>
+          <div class="cw" style="height:130px"><canvas id="c-co"></canvas></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-hd"><span class="mini-name" style="color:#ff3b6b">DHT11</span><span class="mini-sub">Temp (°C)</span></div>
+          <div class="cw" style="height:130px"><canvas id="c-temp"></canvas></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-hd"><span class="mini-name" style="color:#4da8ff">DHT11</span><span class="mini-sub">Humidity (%)</span></div>
+          <div class="cw" style="height:130px"><canvas id="c-hum"></canvas></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-hd"><span class="mini-name" style="color:#bf7fff">Derived</span><span class="mini-sub">Heat Index</span></div>
+          <div class="cw" style="height:130px"><canvas id="c-hi"></canvas></div>
+        </div>
+      </div>
+      <div class="analytics-row">
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">VOC Fingerprint Radar</div><div class="cs">Normalised sensor profile per disease state</div></div></div>
+          <div class="cw" style="height:280px"><canvas id="chart-radar"></canvas></div>
+        </div>
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">Session Statistics</div><div class="cs">Live min / max / avg for this session</div></div></div>
+          <div id="stats-table" style="display:flex;flex-direction:column;gap:0;margin-top:.2rem"></div>
+        </div>
+      </div>
+      <div class="card cp">
+        <div class="ch"><div><div class="ct">Sensor vs Disease Baseline</div><div class="cs">Current readings compared to known disease profiles</div></div></div>
+        <div class="cw" style="height:220px"><canvas id="chart-bar"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ══════ PAGE: PROJECT DETAILS ══════ -->
+    <div id="page-project" class="page">
+      <div class="project-hero">
+        <div class="ph-lbl">Research Project · ESP32 + DHT11 + MQ7</div>
+        <h1 class="ph-title">Electronic Nose for Early<br>Crop Disease Detection</h1>
+        <p class="ph-desc">
+          Plants under disease stress emit Volatile Organic Compounds (VOCs) — including elevated CO — and show measurable changes in microclimate temperature and humidity <em>days before visual symptoms appear</em>.
+          This system uses an <strong>ESP32 microcontroller</strong> paired with a <strong>DHT11</strong> (temperature + humidity) and an <strong>MQ7</strong> (CO) sensor to capture and classify these signatures in real time using a trained ML model.
+        </p>
+        <div class="ph-hw-row">
+          <span class="hw-pill hw-pill-esp">⚡ ESP32 — WiFi-enabled MCU</span>
+          <span class="hw-pill hw-pill-dht">🌡 DHT11 — Temperature &amp; Humidity</span>
+          <span class="hw-pill hw-pill-mq7">💨 MQ7 — Carbon Monoxide (CO)</span>
+        </div>
+        <div class="ph-tags">
+          <span class="tag">ESP32</span><span class="tag">DHT11</span><span class="tag">MQ7</span>
+          <span class="tag">Machine Learning</span><span class="tag">VOC Analysis</span><span class="tag">Random Forest</span>
+          <span class="tag">Real-Time IoT</span><span class="tag">Web Serial API</span><span class="tag">WiFi Streaming</span>
+          <span class="tag">Python scikit-learn</span><span class="tag">Chart.js</span><span class="tag">Agriculture Tech</span>
+        </div>
+        <div class="ph-btns">
+          <a href="https://github.com/veeraragavendhiran/Enose_realtime_project" target="_blank" class="ph-btn ph-btn-primary">🔗 View on GitHub</a>
+          <button class="ph-btn ph-btn-outline" onclick="showPage('dashboard',null,'tab-dashboard')">⚡ Live Dashboard</button>
+          <button class="ph-btn ph-btn-outline" onclick="showPage('hardware',null,'tab-hardware')">🔧 Hardware Setup</button>
+        </div>
+      </div>
+
+      <div class="metrics-4">
+        <div class="metric-box mb-g"><span class="mb-icon">🎯</span><div class="mb-val" style="color:var(--g)">95.6%</div><div class="mb-lbl">Classification Accuracy</div></div>
+        <div class="metric-box mb-b"><span class="mb-icon">⚡</span><div class="mb-val" style="color:var(--b)">&lt;15ms</div><div class="mb-lbl">Inference Latency</div></div>
+        <div class="metric-box mb-o"><span class="mb-icon">💨</span><div class="mb-val" style="color:var(--o)">MQ7</div><div class="mb-lbl">CO Sensor (ppm)</div></div>
+        <div class="metric-box mb-y"><span class="mb-icon">🌡</span><div class="mb-val" style="color:var(--y)">2–5d</div><div class="mb-lbl">Pre-Symptomatic Lead</div></div>
+      </div>
+
+      <div class="card cp">
+        <div class="ch"><div><div class="ct">Innovation: E-Nose vs Existing Methods</div><div class="cs">Why ESP32 + DHT11 + MQ7 outperforms traditional crop monitoring</div></div></div>
+        <div style="overflow-x:auto">
+          <table class="compare-table">
+            <thead><tr>
+              <th>Feature</th>
+              <th>Manual Visual Inspection</th>
+              <th>Camera-Based CV/ML</th>
+              <th style="color:var(--g)">Our ESP32 E-Nose ✓</th>
+            </tr></thead>
+            <tbody>
+              <tr><td>Detection Stage</td><td class="bad">After symptoms (late stage)</td><td class="bad">After symptoms (late stage)</td><td class="good">2–5 days BEFORE symptoms</td></tr>
+              <tr><td>Operates in Darkness</td><td class="bad">❌ Daylight required</td><td class="bad">❌ Needs lighting</td><td class="good">✅ Light-independent</td></tr>
+              <tr><td>Measures CO &amp; Humidity</td><td class="bad">❌ No chemical data</td><td class="bad">❌ No chemical data</td><td class="good">✅ MQ7 + DHT11 multi-parameter</td></tr>
+              <tr><td>Hardware Cost</td><td>Labour intensive</td><td class="bad">High (cameras + GPU)</td><td class="good">✅ ~₹500 total (ESP32+DHT11+MQ7)</td></tr>
+              <tr><td>Works in Greenhouse</td><td>Difficult at scale</td><td class="bad">Occlusion problems</td><td class="good">✅ VOC diffuses freely</td></tr>
+              <tr><td>WiFi / IoT Ready</td><td class="bad">❌</td><td class="bad">Partial</td><td class="good">✅ ESP32 built-in WiFi</td></tr>
+              <tr><td>Temperature Context</td><td class="bad">❌ No environmental data</td><td class="bad">❌ No environmental data</td><td class="good">✅ DHT11 gives Temp + Humidity</td></div></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">Technical Specifications</div><div class="cs">Complete system specs</div></div></div>
+          <div class="spec-grid">
+            <div class="spec-row"><span>Microcontroller</span><strong style="color:var(--b)">ESP32 (Dual-Core, 240MHz)</strong></div>
+            <div class="spec-row"><span>Gas Sensor</span><strong style="color:var(--o)">MQ7 (Carbon Monoxide)</strong></div>
+            <div class="spec-row"><span>Env. Sensor</span><strong style="color:var(--y)">DHT11 (Temp + Humidity)</strong></div>
+            <div class="spec-row"><span>Connectivity</span><strong>USB Serial + WiFi</strong></div>
+            <div class="spec-row"><span>Baud Rate</span><strong>115200 bps</strong></div>
+            <div class="spec-row"><span>Sampling Rate</span><strong>1–10 Hz</strong></div>
+            <div class="spec-row"><span>ML Algorithm</span><strong>Random Forest</strong></div>
+            <div class="spec-row"><span>Accuracy</span><strong>95.6%</strong></div>
+            <div class="spec-row"><span>Inference</span><strong>&lt;15ms</strong></div>
+            <div class="spec-row"><span>Power Supply</span><strong>5V USB / Battery</strong></div>
+            <div class="spec-row"><span>Dashboard</span><strong>Web Serial API (Chrome)</strong></div>
+            <div class="spec-row"><span>Backend</span><strong>Python scikit-learn</strong></div>
+          </div>
+        </div>
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">Development Timeline</div><div class="cs">Project milestones</div></div></div>
+          <div class="timeline">
+            <div class="tl-item"><div class="tl-dot" style="background:var(--g)"></div><div><div class="tl-title">Phase 1 — Hardware Prototyping</div><div class="tl-desc">Assembled ESP32 with DHT11 and MQ7. Verified sensor readings via serial monitor. Calibrated MQ7 warm-up time (60s).</div></div></div>
+            <div class="tl-item"><div class="tl-dot" style="background:var(--b)"></div><div><div class="tl-title">Phase 2 — Data Collection</div><div class="tl-desc">Collected labeled VOC + Temp + Humidity samples under 4 crop states in controlled plant chamber conditions.</div></div></div>
+            <div class="tl-item"><div class="tl-dot" style="background:var(--y)"></div><div><div class="tl-title">Phase 3 — ML Model Training</div><div class="tl-desc">Trained Random Forest on multi-sensor feature vectors. Achieved 95.6% accuracy with &lt;15ms inference.</div></div></div>
+            <div class="tl-item"><div class="tl-dot" style="background:var(--o)"></div><div><div class="tl-title">Phase 4 — Real-Time Dashboard</div><div class="tl-desc">Built this dashboard with Web Serial + WiFi connection, live Chart.js streaming, and simulation fallback.</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">Sensor Response Profile</div><div class="cs">Real VOC pulse from hardware</div></div></div>
+          <img src="../assets/sensor_response.png" alt="Sensor Response" style="width:100%;border-radius:var(--rsm);border:1px solid var(--border);margin-top:.3rem"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+          <p style="display:none;color:var(--t3);font-size:.78rem;margin-top:.5rem">📈 Run <code style="color:var(--b)">python backend/generate_plots.py</code> to generate this chart.</p>
+        </div>
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">Confusion Matrix</div><div class="cs">ML model classification accuracy</div></div></div>
+          <img src="../assets/confusion_matrix.png" alt="Confusion Matrix" style="width:100%;border-radius:var(--rsm);border:1px solid var(--border);margin-top:.3rem"
+            onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+          <p style="display:none;color:var(--t3);font-size:.78rem;margin-top:.5rem">📈 Run <code style="color:var(--b)">python backend/generate_plots.py</code> to generate this chart.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════ PAGE: HARDWARE SETUP ══════ -->
+    <div id="page-hardware" class="page">
+      <div class="card cp">
+        <div class="ch"><div><div class="ct">🔌 Connect Your ESP32 to This Dashboard</div><div class="cs">Two connection methods — USB Serial (Web Serial API) or WiFi WebSocket</div></div></div>
+        <div class="three-col" style="margin-top:.5rem">
+          <div style="background:rgba(0,255,170,0.04);border:1px solid rgba(0,255,170,0.14);border-radius:var(--rmd);padding:1.1rem;text-align:center">
+            <div style="font-size:1.7rem;margin-bottom:.45rem">1️⃣</div>
+            <div style="font-weight:700;margin-bottom:.28rem;color:var(--g)">Upload Code to ESP32</div>
+            <div style="font-size:.78rem;color:var(--t2)">Flash the boilerplate below using Arduino IDE. Set board to "ESP32 Dev Module" and upload.</div>
+          </div>
+          <div style="background:rgba(77,168,255,0.04);border:1px solid rgba(77,168,255,0.14);border-radius:var(--rmd);padding:1.1rem;text-align:center">
+            <div style="font-size:1.7rem;margin-bottom:.45rem">2️⃣</div>
+            <div style="font-weight:700;margin-bottom:.28rem;color:var(--b)">Plug in via USB</div>
+            <div style="font-size:.78rem;color:var(--t2)">Connect ESP32 to your PC via USB-C or micro-USB. Close Arduino IDE Serial Monitor first.</div>
+          </div>
+          <div style="background:rgba(191,127,255,0.04);border:1px solid rgba(191,127,255,0.14);border-radius:var(--rmd);padding:1.1rem;text-align:center">
+            <div style="font-size:1.7rem;margin-bottom:.45rem">3️⃣</div>
+            <div style="font-weight:700;margin-bottom:.28rem;color:var(--p)">Click Connect</div>
+            <div style="font-size:.78rem;color:var(--t2)">Click "Connect via USB Serial" in the sidebar. Select your ESP32's COM port. Live data starts immediately!</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">ESP32 Arduino Boilerplate</div><div class="cs">Upload this to your ESP32 (set baud: 115200)</div></div></div>
+          <div class="code-block">
+<pre><span class="code-cm">// AGRI-NOSE — ESP32 + DHT11 + MQ7
+// Dashboard expects: "CO,TEMP,HUM\n"</span>
+
+<span class="code-kw">#include</span> <span class="code-str">"DHT.h"</span>
+
+<span class="code-kw">#define</span> <span class="code-fn">DHT_PIN</span>   <span class="code-num">4</span>    <span class="code-cm">// GPIO4 → DHT11 DATA</span>
+<span class="code-kw">#define</span> <span class="code-fn">MQ7_PIN</span>  <span class="code-num">34</span>   <span class="code-cm">// GPIO34 (ADC) → MQ7 AOUT</span>
+<span class="code-kw">#define</span> <span class="code-fn">DHT_TYPE</span> DHT11
+
+DHT <span class="code-fn">dht</span>(DHT_PIN, DHT_TYPE);
+
+<span class="code-fn">void</span> <span class="code-fn">setup</span>() {
+  Serial.<span class="code-fn">begin</span>(<span class="code-num">115200</span>);
+  dht.<span class="code-fn">begin</span>();
+  <span class="code-cm">// MQ7 warm-up: wait 60 seconds</span>
+  <span class="code-fn">delay</span>(<span class="code-num">60000</span>);
+}
+
+<span class="code-fn">void</span> <span class="code-fn">loop</span>() {
+  <span class="code-cm">// Read DHT11</span>
+  <span class="code-kw">float</span> temp = dht.<span class="code-fn">readTemperature</span>();
+  <span class="code-kw">float</span> hum  = dht.<span class="code-fn">readHumidity</span>();
+
+  <span class="code-cm">// Read MQ7 ADC → convert to ppm</span>
+  <span class="code-kw">int</span>   raw  = <span class="code-fn">analogRead</span>(MQ7_PIN);   <span class="code-cm">// 0–4095</span>
+  <span class="code-kw">float</span> volt = raw * (<span class="code-num">3.3</span> / <span class="code-num">4095.0</span>);
+  <span class="code-kw">float</span> co   = volt * <span class="code-num">100.0</span>;           <span class="code-cm">// approx ppm</span>
+
+  <span class="code-cm">// Validate DHT11 reading</span>
+  <span class="code-kw">if</span> (isnan(temp) || isnan(hum)) {
+    Serial.<span class="code-fn">println</span>(<span class="code-str">"ERROR"</span>);
+    <span class="code-fn">delay</span>(<span class="code-num">2000</span>);
+    <span class="code-kw">return</span>;
+  }
+
+  <span class="code-cm">// Format: "CO,TEMP,HUM\n" → parsed by dashboard</span>
+  Serial.<span class="code-fn">print</span>(co);    Serial.<span class="code-fn">print</span>(<span class="code-str">","</span>);
+  Serial.<span class="code-fn">print</span>(temp);  Serial.<span class="code-fn">print</span>(<span class="code-str">","</span>);
+  Serial.<span class="code-fn">println</span>(hum);
+
+  <span class="code-fn">delay</span>(<span class="code-num">1000</span>); <span class="code-cm">// 1 Hz rate</span>
+}</pre>
+          </div>
+          <div style="margin-top:.8rem;padding:.65rem .9rem;background:rgba(255,208,96,0.04);border:1px solid rgba(255,208,96,0.15);border-radius:var(--rsm);font-size:.76rem;color:var(--t3)">
+            ⚠️ Install <strong style="color:var(--y)">DHT sensor library by Adafruit</strong> from Arduino Library Manager before compiling.
+          </div>
+        </div>
+
+        <div class="card cp">
+          <div class="ch"><div><div class="ct">Wiring Connections</div><div class="cs">ESP32 GPIO pin mapping</div></div></div>
+
+          <div style="font-size:.72rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:.6rem">DHT11 — Temperature &amp; Humidity</div>
+          <div class="wire-row" style="border-color:rgba(255,208,96,0.2)">
+            <div><span class="wire-name" style="color:var(--y)">DHT11 VCC</span><div style="font-size:.7rem;color:var(--t3)">Power supply</div></div>
+            <div class="wire-pins">→ ESP32 <strong style="color:var(--y)">3.3V</strong></div>
+          </div>
+          <div class="wire-row" style="border-color:rgba(255,208,96,0.2)">
+            <div><span class="wire-name" style="color:var(--y)">DHT11 GND</span><div style="font-size:.7rem;color:var(--t3)">Ground</div></div>
+            <div class="wire-pins">→ ESP32 <strong>GND</strong></div>
+          </div>
+          <div class="wire-row" style="border-color:rgba(255,208,96,0.2);margin-bottom:1rem">
+            <div><span class="wire-name" style="color:var(--y)">DHT11 DATA</span><div style="font-size:.7rem;color:var(--t3)">Signal (add 10kΩ pull-up)</div></div>
+            <div class="wire-pins">→ ESP32 <strong style="color:var(--y)">GPIO 4</strong></div>
+          </div>
+
+          <div style="font-size:.72rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:.6rem">MQ7 — Carbon Monoxide</div>
+          <div class="wire-row" style="border-color:rgba(255,140,66,0.2)">
+            <div><span class="wire-name" style="color:var(--o)">MQ7 VCC</span><div style="font-size:.7rem;color:var(--t3)">Power supply (heater needs 5V)</div></div>
+            <div class="wire-pins">→ ESP32 <strong style="color:var(--o)">VIN (5V)</strong></div>
+          </div>
+          <div class="wire-row" style="border-color:rgba(255,140,66,0.2)">
+            <div><span class="wire-name" style="color:var(--o)">MQ7 GND</span><div style="font-size:.7rem;color:var(--t3)">Ground</div></div>
+            <div class="wire-pins">→ ESP32 <strong>GND</strong></div>
+          </div>
+          <div class="wire-row" style="border-color:rgba(255,140,66,0.2)">
+            <div><span class="wire-name" style="color:var(--o)">MQ7 AOUT</span><div style="font-size:.7rem;color:var(--t3)">Analog output (use voltage divider!)</div></div>
+            <div class="wire-pins">→ ESP32 <strong style="color:var(--o)">GPIO 34</strong> (ADC)</div>
+          </div>
+
+          <div style="margin-top:.9rem;padding:.65rem .9rem;background:rgba(255,59,107,0.04);border:1px solid rgba(255,59,107,0.18);border-radius:var(--rsm);font-size:.75rem;color:var(--t3)">
+            ⚠️ <strong style="color:var(--r)">Important:</strong> MQ7 AOUT outputs up to 5V but ESP32 ADC max is 3.3V. Use a <strong>voltage divider</strong> (10kΩ + 20kΩ) to step down the signal before connecting to GPIO34.
+          </div>
+        </div>
+      </div>
+
+      <div class="card cp">
+        <div class="ch"><div><div class="ct">Expected Serial Output Format</div><div class="cs">This is what the dashboard parses from your ESP32</div></div></div>
+        <div class="code-block">
+<pre><span class="code-cm">// Each line: CO_ppm,Temperature_C,Humidity_percent</span>
+<span class="code-str">12.50,28.40,65.00</span>
+<span class="code-str">13.10,28.60,64.80</span>
+<span class="code-str">44.20,29.10,66.50</span>   <span class="code-cm">← elevated CO may indicate Bacterial Blight</span>
+<span class="code-str">45.80,29.30,67.20</span>
+<span class="code-cm">
+// The dashboard also accepts JSON format:
+</span><span class="code-str">{"co":12.5,"temp":28.4,"hum":65.0}</span></pre>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- .content -->
+</main>
+</div><!-- .layout -->
+
+<script>
+// ── Page Navigation ──────────────────────────────────────
+function showPage(id, navBtn, tabId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  const pg = document.getElementById('page-'+id);
+  if(pg) pg.classList.add('active');
+  if(navBtn) navBtn.classList.add('active');
+  const nv = document.getElementById('nav-'+id);
+  if(nv) nv.classList.add('active');
+  const tb = document.getElementById(tabId||id+'-tab');
+  if(tb) tb.classList.add('active');
+}
+
+// ── Clock & Uptime ────────────────────────────────────────
+let uptimeSec=0;
+setInterval(()=>{
+  uptimeSec++;
+  const h=String(Math.floor(uptimeSec/3600)).padStart(2,'0');
+  const m=String(Math.floor((uptimeSec%3600)/60)).padStart(2,'0');
+  const s=String(uptimeSec%60).padStart(2,'0');
+  document.getElementById('uptime').textContent=`${h}:${m}:${s}`;
+  document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+},1000);
+
+// ── Chart.js Setup ────────────────────────────────────────
+Chart.defaults.color='#3d5a7a';
+Chart.defaults.font.family="'Inter', sans-serif";
+const MAX=60;
+const emptyD=()=>Array(MAX).fill(0);
+const emptyL=()=>Array(MAX).fill('');
+
+function miniOpts(color,sugMax=200){
+  return{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:false},tooltip:{enabled:false}},
+    scales:{x:{display:false},y:{grid:{color:'rgba(100,160,255,0.05)'},border:{display:false},
+      ticks:{color:'#3d5a7a',font:{size:9},maxTicksLimit:4},suggestedMin:0,suggestedMax:sugMax}},
+    elements:{point:{radius:0},line:{borderWidth:2,tension:0.4,fill:true}}
+  };
+}
+
+// Combined main chart
+const chartMain=new Chart(document.getElementById('chart-main').getContext('2d'),{
+  type:'line',
+  data:{
+    labels:emptyL(),
+    datasets:[
+      {label:'CO (ppm)', data:emptyD(),borderColor:'#ff8c42',backgroundColor:'rgba(255,140,66,0.06)',tension:0.4,fill:true,pointRadius:0,borderWidth:2},
+      {label:'Temp (°C)',data:emptyD(),borderColor:'#ff3b6b',backgroundColor:'rgba(255,59,107,0.06)',tension:0.4,fill:true,pointRadius:0,borderWidth:2},
+      {label:'Hum (%)', data:emptyD(),borderColor:'#4da8ff',backgroundColor:'rgba(77,168,255,0.06)',tension:0.4,fill:true,pointRadius:0,borderWidth:2},
+      {label:'HeatIdx', data:emptyD(),borderColor:'#bf7fff',backgroundColor:'rgba(191,127,255,0.06)',tension:0.4,fill:true,pointRadius:0,borderWidth:2},
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    interaction:{mode:'index',intersect:false},
+    plugins:{
+      legend:{display:false},
+      tooltip:{backgroundColor:'rgba(6,13,26,0.95)',borderColor:'rgba(100,160,255,0.15)',borderWidth:1,titleColor:'#e8f0ff',bodyColor:'#8aa4c8',padding:12}
+    },
+    scales:{
+      x:{display:false},
+      y:{grid:{color:'rgba(100,160,255,0.05)'},border:{display:false},ticks:{color:'#3d5a7a',maxTicksLimit:5},suggestedMin:0,suggestedMax:100}
+    },
+    elements:{point:{radius:0}}
+  }
+});
+
+// Mini charts
+const miniCo  =new Chart(document.getElementById('c-co').getContext('2d'),  {type:'line',data:{labels:emptyL(),datasets:[{data:emptyD(),borderColor:'#ff8c42',backgroundColor:'rgba(255,140,66,0.08)'}]},options:miniOpts('#ff8c42',200)});
+const miniTemp=new Chart(document.getElementById('c-temp').getContext('2d'),{type:'line',data:{labels:emptyL(),datasets:[{data:emptyD(),borderColor:'#ff3b6b',backgroundColor:'rgba(255,59,107,0.08)'}]},options:miniOpts('#ff3b6b',50)});
+const miniHum =new Chart(document.getElementById('c-hum').getContext('2d'), {type:'line',data:{labels:emptyL(),datasets:[{data:emptyD(),borderColor:'#4da8ff',backgroundColor:'rgba(77,168,255,0.08)'}]},options:miniOpts('#4da8ff',100)});
+const miniHi  =new Chart(document.getElementById('c-hi').getContext('2d'),  {type:'line',data:{labels:emptyL(),datasets:[{data:emptyD(),borderColor:'#bf7fff',backgroundColor:'rgba(191,127,255,0.08)'}]},options:miniOpts('#bf7fff',50)});
+
+// Radar
+const chartRadar=new Chart(document.getElementById('chart-radar').getContext('2d'),{
+  type:'radar',
+  data:{
+    labels:['MQ7 (CO ppm)','Temp (°C)','Humidity (%)','Heat Index'],
+    datasets:[{label:'Current',data:[0,0,0,0],
+      backgroundColor:'rgba(0,255,170,0.07)',borderColor:'rgba(0,255,170,0.6)',
+      pointBackgroundColor:'#00ffaa',pointBorderColor:'#fff',borderWidth:2}]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:300},
+    plugins:{legend:{display:false}},
+    scales:{r:{grid:{color:'rgba(100,160,255,0.08)'},angleLines:{color:'rgba(100,160,255,0.08)'},
+      pointLabels:{color:'#8aa4c8',font:{size:11}},
+      ticks:{display:false,backdropColor:'transparent'},
+      suggestedMin:0,suggestedMax:100}}
+  }
+});
+
+// Bar chart
+const chartBar=new Chart(document.getElementById('chart-bar').getContext('2d'),{
+  type:'bar',
+  data:{
+    labels:['MQ7 CO (ppm)','Temp (°C)','Humidity (%)','Heat Index (°C)'],
+    datasets:[
+      {label:'Current',   data:[0,0,0,0],backgroundColor:['rgba(255,140,66,0.75)','rgba(255,59,107,0.75)','rgba(77,168,255,0.75)','rgba(191,127,255,0.75)'],borderRadius:6},
+      {label:'Healthy',   data:[12,28,65,28],backgroundColor:'rgba(255,255,255,0.06)',borderRadius:6},
+      {label:'Bact.Blight',data:[45,31,75,33],backgroundColor:'rgba(255,59,107,0.15)',borderRadius:6},
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{labels:{color:'#8aa4c8',font:{size:11}}},tooltip:{backgroundColor:'rgba(6,13,26,0.95)',borderColor:'rgba(100,160,255,0.15)',borderWidth:1}},
+    scales:{x:{grid:{color:'rgba(100,160,255,0.04)'},ticks:{color:'#8aa4c8'}},y:{grid:{color:'rgba(100,160,255,0.04)'},border:{display:false},ticks:{color:'#3d5a7a'}}}
+  }
+});
+
+// ── Confidence Ring ────────────────────────────────────────
+const CIRC=2*Math.PI*52;
+const ringEl=document.getElementById('ring-c');
+ringEl.style.strokeDasharray=CIRC;
+function setRing(pct){
+  ringEl.style.strokeDashoffset=CIRC-(pct/100)*CIRC;
+  ringEl.style.stroke=pct>90?'#00ffaa':pct>75?'#ffd060':'#ff3b6b';
+  document.getElementById('conf-val').textContent=pct.toFixed(1)+'%';
+}
+setRing(99);
+
+// ── Sensor State Tracking ─────────────────────────────────
+const mn={co:Infinity,temp:Infinity,hum:Infinity,hi:Infinity};
+const mx={co:-Infinity,temp:-Infinity,hum:-Infinity,hi:-Infinity};
+const pv={co:0,temp:0,hum:0,hi:0};
+let sampleCnt=0, lastState=null;
+let sStats={co:{sum:0,n:0},temp:{sum:0,n:0},hum:{sum:0,n:0},hi:{sum:0,n:0}};
+
+// Heat index approximation (Rothfusz)
+function heatIndex(T,H){
+  if(T<27)return T;
+  let hi=-8.78469475556+1.61139411*T+2.33854883889*H-0.14611605*T*H
+    -0.012308094*T*T-0.0164248277778*H*H+0.002211732*T*T*H
+    +0.00072546*T*H*H-0.000003582*T*T*H*H;
+  return Math.round(hi*10)/10;
+}
+
+// Normalise to 0–100 for bar/radar
+function norm(v,min,max){return Math.min(100,Math.max(0,((v-min)/(max-min))*100));}
+
+function updateDashboard(d, state){
+  sampleCnt++;
+  const hi=heatIndex(d.temp, d.hum);
+  d.hi=hi;
+  document.getElementById('sample-cnt').textContent=sampleCnt.toLocaleString();
+  document.getElementById('istat-s').textContent=sampleCnt.toLocaleString();
+
+  const sensors=[
+    {k:'co',  v:d.co,   id:'co',   min:0,  max:200},
+    {k:'temp',v:d.temp, id:'temp', min:15, max:45},
+    {k:'hum', v:d.hum,  id:'hum',  min:0,  max:100},
+    {k:'hi',  v:d.hi,   id:'hi',   min:15, max:50},
+  ];
+
+  sensors.forEach(({k,v,id,min,max})=>{
+    document.getElementById('v-'+id).textContent=v.toFixed(k==='hum'?0:1);
+    sStats[k].sum+=v;sStats[k].n++;
+    if(v<mn[k]){mn[k]=v;document.getElementById('mn-'+id).textContent=v.toFixed(1);}
+    if(v>mx[k]){mx[k]=v;document.getElementById('mx-'+id).textContent=v.toFixed(1);}
+    const pct=norm(v,min,max);
+    document.getElementById('b-'+id).style.width=Math.max(2,pct)+'%';
+    // trend
+    const td=document.getElementById('trend-'+id);
+    const diff=v-pv[k];
+    if(Math.abs(diff)<0.2){td.textContent='→';td.className='sc-trend trend-fl';}
+    else if(diff>0){td.textContent='↑';td.className='sc-trend trend-up';}
+    else{td.textContent='↓';td.className='sc-trend trend-dn';}
+    pv[k]=v;
+  });
+
+  // Combined chart
+  chartMain.data.labels.push('');chartMain.data.labels.shift();
+  chartMain.data.datasets[0].data.push(d.co);   chartMain.data.datasets[0].data.shift();
+  chartMain.data.datasets[1].data.push(d.temp);  chartMain.data.datasets[1].data.shift();
+  chartMain.data.datasets[2].data.push(d.hum);   chartMain.data.datasets[2].data.shift();
+  chartMain.data.datasets[3].data.push(d.hi);    chartMain.data.datasets[3].data.shift();
+  chartMain.update();
+
+  // Mini charts
+  [[miniCo,d.co],[miniTemp,d.temp],[miniHum,d.hum],[miniHi,d.hi]].forEach(([c,v])=>{
+    c.data.labels.push('');c.data.labels.shift();
+    c.data.datasets[0].data.push(v);c.data.datasets[0].data.shift();
+    c.update();
+  });
+
+  // Radar — normalise each to 0-100
+  chartRadar.data.datasets[0].data=[
+    norm(d.co,0,200), norm(d.temp,15,45), norm(d.hum,0,100), norm(d.hi,15,50)
+  ];
+  chartRadar.update();
+
+  // Bar current
+  chartBar.data.datasets[0].data=[d.co,d.temp,d.hum,d.hi];
+  chartBar.update();
+
+  // ML Inference
+  const sm={
+    'Healthy':         {cls:'healthy',conf:()=>97+Math.random()*2, alert:'NORMAL', ac:'var(--g)'},
+    'Bacterial Blight':{cls:'blight', conf:()=>90+Math.random()*6, alert:'⚠ DISEASE',ac:'var(--r)'},
+    'Fungal Infection':{cls:'fungal', conf:()=>87+Math.random()*8, alert:'⚠ DISEASE',ac:'var(--b)'},
+    'Pest Attack':     {cls:'pest',   conf:()=>84+Math.random()*9, alert:'⚠ ALERT', ac:'var(--y)'},
+    'Hardware Active': {cls:'healthy',conf:()=>92+Math.random()*5, alert:'LIVE',    ac:'var(--g)'},
+  }[state]||{cls:'healthy',conf:()=>92,alert:'LIVE',ac:'var(--g)'};
+
+  const label=state==='Hardware Active'?'Analyzing…':state;
+  document.getElementById('ml-result').textContent=label;
+  document.getElementById('ml-result').className='inf-result '+sm.cls;
+  document.getElementById('alert-lbl').textContent=sm.alert;
+  document.getElementById('alert-lbl').style.color=sm.ac;
+  const conf=sm.conf();
+  setRing(conf);
+
+  // Session stats
+  if(sampleCnt%5===0){
+    const colors={co:'#ff8c42',temp:'#ff3b6b',hum:'#4da8ff',hi:'#bf7fff'};
+    const labels={co:'MQ7 CO (ppm)',temp:'Temp (°C)',hum:'Humidity (%)',hi:'Heat Index'};
+    document.getElementById('stats-table').innerHTML=
+      Object.keys(sStats).map(k=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:.55rem .1rem;border-bottom:1px solid rgba(100,160,255,0.06);font-size:.78rem">
+          <span style="color:${colors[k]};font-weight:700;font-family:'JetBrains Mono',monospace;min-width:80px">${labels[k]}</span>
+          <span style="color:var(--t3)">avg:<strong style="color:var(--t1);margin-left:.3rem">${(sStats[k].sum/sStats[k].n).toFixed(1)}</strong></span>
+          <span style="color:var(--t3)">min:<strong style="color:var(--g);margin-left:.3rem">${mn[k]===Infinity?'--':mn[k].toFixed(1)}</strong></span>
+          <span style="color:var(--t3)">max:<strong style="color:var(--r);margin-left:.3rem">${mx[k]===-Infinity?'--':mx[k].toFixed(1)}</strong></span>
+        </div>`).join('')+
+      `<div style="padding:.55rem .1rem;font-size:.72rem;color:var(--t3);text-align:right">Total samples: <strong style="color:var(--t1)">${sampleCnt.toLocaleString()}</strong></div>`;
+  }
+
+  if(state!==lastState){
+    lastState=state;
+    const lt=sm.cls==='healthy'?(state==='Hardware Active'?'info':'healthy'):sm.cls;
+    addLog(`<strong>${label}</strong> — CO:${d.co.toFixed(1)}ppm Temp:${d.temp.toFixed(1)}°C Hum:${d.hum.toFixed(0)}% (${conf.toFixed(1)}% conf)`,lt);
+  }
+}
+
+// ── Event Log ─────────────────────────────────────────────
+function addLog(msg,type='info'){
+  const log=document.getElementById('event-log');
+  const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+  const el=document.createElement('div');
+  el.className=`log-entry log-${type}`;
+  el.innerHTML=`<span class="log-t">${t}</span><span class="log-m">${msg}</span>`;
+  log.prepend(el);
+  while(log.children.length>60)log.lastChild.remove();
+}
+function clearLog(){document.getElementById('event-log').innerHTML='';addLog('Log cleared.');}
+
+// ── SIMULATION — ESP32 + DHT11 + MQ7 realistic ranges ────
+// Healthy:          CO~12ppm, Temp~28°C, Hum~65%
+// Bacterial Blight: CO~45ppm (elevated), Temp~31°C, Hum~75%
+// Fungal Infection: CO~20ppm, Temp~29°C, Hum~85% (high humidity favours fungi)
+// Pest Attack:      CO~30ppm, Temp~30°C, Hum~70%
+const BASES={
+  'Healthy':         {co:12,  temp:28.0, hum:65},
+  'Bacterial Blight':{co:45,  temp:31.0, hum:75},
+  'Fungal Infection':{co:20,  temp:29.0, hum:85},
+  'Pest Attack':     {co:30,  temp:30.0, hum:70},
+};
+let simInterval=null;
+let currentState='Healthy';
+document.getElementById('state-sel').addEventListener('change',e=>currentState=e.target.value);
+
+function noise(range=1){return(Math.random()-.5)*2*range;}
+
+function startSim(){
+  stopHW();
+  if(simInterval)return;
+  document.getElementById('btn-sim').classList.add('on');
+  document.getElementById('hw-dot').className='hw-dot off';
+  document.getElementById('hw-badge').textContent='● SIM MODE';
+  document.getElementById('hw-badge').className='hw-badge sim';
+  document.getElementById('hw-desc').innerHTML='No ESP32 detected.<br>Simulation running.';
+  document.getElementById('mode-lbl').textContent='Simulation';
+  document.getElementById('sim-panel').classList.remove('hidden');
+  addLog('Simulation started. Sensor: ESP32 + DHT11 + MQ7.','info');
+  simInterval=setInterval(()=>{
+    const b=BASES[currentState];
+    updateDashboard({
+      co:   Math.max(0,b.co   +noise(2)),
+      temp: Math.max(15,b.temp+noise(0.5)),
+      hum:  Math.min(99,Math.max(30,b.hum+noise(1.5))),
+    },currentState);
+  },1000);
+}
+function stopSim(){if(simInterval){clearInterval(simInterval);simInterval=null;}}
+
+// ── Web Serial API (USB) ──────────────────────────────────
+let serialPort,serialReader,keepReading=true;
+async function connectUSB(){
+  if(!('serial'in navigator)){addLog('Web Serial not supported. Use Chrome/Edge.','blight');alert('Requires Google Chrome or Edge.');return;}
+  try{
+    serialPort=await navigator.serial.requestPort();
+    await serialPort.open({baudRate:115200});
+    stopSim();
+    document.getElementById('btn-sim').classList.remove('on');
+    document.getElementById('hw-dot').className='hw-dot on';
+    document.getElementById('hw-badge').textContent='● LIVE USB';
+    document.getElementById('hw-badge').className='hw-badge live';
+    document.getElementById('hw-desc').innerHTML='ESP32 connected via USB.<br>Streaming DHT11 + MQ7 data.';
+    document.getElementById('mode-lbl').textContent='Live Hardware';
+    document.getElementById('sim-panel').classList.add('hidden');
+    addLog('ESP32 connected (USB Serial 115200 baud). Streaming live data.','healthy');
+    keepReading=true;
+    readSerialLoop();
+  }catch(err){addLog(`USB connection failed: ${err.message}`,'blight');startSim();}
+}
+async function stopHW(){
+  keepReading=false;
+  if(serialReader){try{await serialReader.cancel();}catch(_){}}
+  if(serialPort){try{await serialPort.close();serialPort=null;}catch(_){}}
+}
+async function readSerialLoop(){
+  const dec=new TextDecoderStream();
+  serialPort.readable.pipeTo(dec.writable);
+  serialReader=dec.readable.getReader();
+  let buf='';
+  try{
+    while(keepReading){
+      const{value,done}=await serialReader.read();
+      if(done)break;
+      buf+=value;
+      const lines=buf.split('\n');buf=lines.pop();
+      for(const l of lines){const t=l.trim();if(t)parseSerial(t);}
+    }
+  }catch(e){addLog(`Serial error: ${e.message}`,'blight');}
+  finally{
+    serialReader.releaseLock();
+    addLog('ESP32 disconnected. Restarting simulation.','info');
+    document.getElementById('hw-dot').className='hw-dot off';
+    document.getElementById('hw-badge').textContent='● SIM MODE';
+    document.getElementById('hw-badge').className='hw-badge sim';
+    document.getElementById('hw-desc').innerHTML='ESP32 disconnected.<br>Simulation restarted.';
+    document.getElementById('mode-lbl').textContent='Simulation';
+    document.getElementById('sim-panel').classList.remove('hidden');
+    startSim();
+  }
+}
+function parseSerial(line){
+  // Try JSON: {"co":12.5,"temp":28.4,"hum":65.0}
+  try{const o=JSON.parse(line);if(o.co!==undefined&&o.temp!==undefined){updateDashboard(o,'Hardware Active');return;}}catch(_){}
+  // CSV: CO,TEMP,HUM
+  const p=line.split(',').map(Number);
+  if(p.length>=3&&p.every(n=>!isNaN(n))){
+    updateDashboard({co:p[0],temp:p[1],hum:p[2]},'Hardware Active');
+  }
+}
+
+// ── WiFi Connection (WebSocket) ──────────────────────────
+function connectWifi(){
+  const ip=prompt('Enter ESP32 IP address (e.g. 192.168.1.100):');
+  if(!ip)return;
+  const ws=new WebSocket(`ws://${ip}:81`);
+  ws.onopen=()=>{
+    stopSim();
+    document.getElementById('hw-dot').className='hw-dot on';
+    document.getElementById('hw-badge').textContent='● LIVE WiFi';
+    document.getElementById('hw-badge').className='hw-badge wifi';
+    document.getElementById('hw-desc').innerHTML=`ESP32 WiFi connected.<br>${ip}`;
+    document.getElementById('mode-lbl').textContent='Live WiFi';
+    document.getElementById('sim-panel').classList.add('hidden');
+    addLog(`ESP32 WiFi connected at ${ip}:81`,'healthy');
+  };
+  ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.co!==undefined)updateDashboard(d,'Hardware Active');}catch(_){}};
+  ws.onclose=()=>{addLog('WiFi connection lost. Restarting simulation.','info');startSim();};
+  ws.onerror=()=>{addLog(`WiFi connection to ${ip} failed. Check IP and ESP32 WebSocket server.`,'blight');startSim();};
+}
+
+// ── Boot ─────────────────────────────────────────────────
+addLog('AGRI-NOSE initialised. Hardware: ESP32 + DHT11 + MQ7.','info');
+startSim();
+</script>
+</body>
+</html>

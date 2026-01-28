@@ -1,0 +1,11 @@
+# For MongoDB connection
+pymongo
+
+# For Google Cloud Pub/Sub and Functions development
+google-cloud-pubsub
+functions-framework  # For local testing of Cloud Function
+
+# Other ML libraries (if not already present)
+numpy
+pandas
+scikit-learn  # For initial ML models (SVM/Random Forest)
